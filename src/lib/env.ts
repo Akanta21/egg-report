@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 const schema = z.object({
-  DATABASE_URL: z.string().url(),
   WHAPI_TOKEN: z.string().min(1).optional(),
   SLACK_WEBHOOK_URL: z.string().url().optional(),
   EGG_GROUP_ID: z.string().regex(/@g\.us$/, "must be a WhatsApp group id ending in @g.us").optional(),

@@ -10,14 +10,14 @@
     "context": "tsx scripts/context.ts",
     "send": "tsx scripts/send.ts",
     "save": "tsx scripts/save.ts",
-    "migrate": "tsx scripts/migrate.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "cheerio": "^1.0.0",
-    "postgres": "^3.4.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

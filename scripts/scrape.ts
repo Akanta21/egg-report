@@ -1,73 +1,42 @@
-/**
- * Scrape today's 浠水 table and all regional 快报 for the target date.
- * Also fills any gap since the last recorded date (up to 14 days back).
- *
- * Exit codes:
- *   0  today's 浠水45斤 price recorded
- *   2  no verifiable 浠水 price for today (do not backfill, do not guess)
- *   1  unexpected error
- *
- * Usage: npm run scrape [-- --date 2026-09-03]
- */
-import { sql, closeDb } from "../src/lib/db.js";
+/** Scrape the target window and persist verified prices. */
 import { addDays, todayHK } from "../src/lib/dates.js";
-import { discover, fetchHtml, parseRegional, parseXishui, type ListingEntry } from "../src/lib/jbzyw.js";
+import { discover, fetchHtml, parseRegional, parseXishui } from "../src/lib/jbzyw.js";
+import { readRegional, readXishui, writeJson, regionalPath, xishuiPath, type StoredRegionalQuote, type StoredXishuiRow } from "../src/lib/store.js";
 
-const argDate = process.argv.indexOf("--date");
-const target = argDate > 0 ? process.argv[argDate + 1]! : todayHK();
-
-const db = sql();
-const last = await db<{ d: string | null }[]>`select max(trade_date)::text as d from xishui_prices where weight_jin = 45`;
-const lastDate = last[0]?.d ?? null;
-const oldest = lastDate ? addDays(lastDate, 1) : addDays(target, -14);
-const from = oldest < addDays(target, -14) ? addDays(target, -14) : oldest;
-
-console.log(`target=${target} last_recorded=${lastDate ?? "none"} filling_from=${from}`);
-
-const entries = await discover(from, target);
-const xishui = entries.filter((e) => e.kind === "xishui" && e.date <= target);
-const regional = entries.filter((e) => e.kind === "regional" && e.date <= target);
-console.log(`found ${xishui.length} 浠水 articles, ${regional.length} regional 快报 in window`);
-
+const args = process.argv.slice(2);
+const dateIndex = args.indexOf("--date");
+const target = dateIndex >= 0 ? args[dateIndex + 1]! : todayHK();
+const existing = await readXishui<Record<string, StoredXishuiRow[]>>();
+const lastDate = Object.keys(existing).filter((date) => existing[date]?.some((row) => row.weight_jin === 45)).sort().at(-1) ?? null;
+const from = lastDate ? addDays(lastDate, 1) : addDays(target, -14);
+const windowStart = from < addDays(target, -14) ? addDays(target, -14) : from;
+console.log(`target=${target} last_recorded=${lastDate ?? "none"} filling_from=${windowStart}`);
+const entries = await discover(windowStart, target);
+const xishuiEntries = entries.filter((entry) => entry.kind === "xishui" && entry.date <= target);
+const regionalEntries = entries.filter((entry) => entry.kind === "regional" && entry.date <= target);
+console.log(`found ${xishuiEntries.length} 浠水 articles, ${regionalEntries.length} regional 快报 in window`);
 let todayRecorded = false;
-
-for (const e of xishui.sort((a, b) => a.date.localeCompare(b.date))) {
-  const art = parseXishui(await fetchHtml(e.url), target);
-  if (art.date !== e.date) console.warn(`date mismatch title=${e.date} page=${art.date} ${e.url}`);
-  if (!art.p45) {
-    console.warn(`no 45斤 row parsed at ${e.url}`);
-    continue;
-  }
-  await db`
-    insert into xishui_prices ${db(
-      art.rows.map((r) => ({ trade_date: art.date, weight_jin: r.weightJin, price: r.price, price_prev: r.pricePrev, source_url: e.url })),
-      "trade_date", "weight_jin", "price", "price_prev", "source_url",
-    )}
-    on conflict (trade_date, weight_jin) do update set price = excluded.price, price_prev = excluded.price_prev, source_url = excluded.source_url, scraped_at = now()`;
-  console.log(`浠水 ${art.date}: 45斤=${art.p45.price} (prev ${art.p45.pricePrev ?? "?"}), ${art.rows.length} bands`);
-  if (art.date === target) todayRecorded = true;
-  await new Promise((r) => setTimeout(r, 300));
+for (const entry of xishuiEntries.sort((a, b) => a.date.localeCompare(b.date))) {
+  const article = parseXishui(await fetchHtml(entry.url), target);
+  if (!article.p45) { console.warn(`no 45斤 row parsed at ${entry.url}`); continue; }
+  const rows = article.rows.map((row): StoredXishuiRow => ({ weight_jin: row.weightJin, price: row.price, price_prev: row.pricePrev, source_url: entry.url }));
+  existing[article.date] = rows;
+  console.log(`浠水 ${article.date}: 45斤=${article.p45.price} (prev ${article.p45.pricePrev ?? "?"}), ${rows.length} bands`);
+  if (article.date === target) todayRecorded = true;
+  await new Promise((resolve) => setTimeout(resolve, 300));
 }
-
-for (const e of regional) {
-  const quotes = parseRegional(await fetchHtml(e.url));
-  if (quotes.length === 0) {
-    console.warn(`no quotes parsed: ${e.title} ${e.url}`);
-    continue;
-  }
-  await db`
-    insert into regional_quotes ${db(
-      quotes.map((q) => ({ trade_date: e.date, province: e.region ?? "?", city: q.city, price: q.price, unit: q.unit, trend: q.trend, raw: q.raw, source_url: e.url })),
-      "trade_date", "province", "city", "price", "unit", "trend", "raw", "source_url",
-    )}
-    on conflict (trade_date, province, city, unit) do update set price = excluded.price, trend = excluded.trend, raw = excluded.raw, scraped_at = now()`;
-  console.log(`${e.date} ${e.region}: ${quotes.length} quotes`);
-  await new Promise((r) => setTimeout(r, 300));
+const regional = await readRegional<Record<string, StoredRegionalQuote[]>>();
+for (const entry of regionalEntries) {
+  const quotes = parseRegional(await fetchHtml(entry.url));
+  if (!quotes.length) { console.warn(`no quotes parsed: ${entry.title} ${entry.url}`); continue; }
+  const prior = regional[entry.date] ?? [];
+  const byKey = new Map(prior.map((quote) => [`${quote.province}|${quote.city}|${quote.unit}`, quote]));
+  for (const quote of quotes) byKey.set(`${entry.region ?? "?"}|${quote.city}|${quote.unit}`, { province: entry.region ?? "?", ...quote, source_url: entry.url });
+  regional[entry.date] = [...byKey.values()];
+  console.log(`${entry.date} ${entry.region}: ${quotes.length} quotes`);
+  await new Promise((resolve) => setTimeout(resolve, 300));
 }
-
-await closeDb();
-
-if (!todayRecorded) {
-  console.error(`NO VERIFIED 浠水45斤 PRICE FOR ${target}. Leave the gap. Do not estimate.`);
-  process.exit(2);
-}
+// Regional first; xishui.json is the checkpoint that advances last_recorded, so it goes last.
+await writeJson(regionalPath(), regional);
+await writeJson(xishuiPath(), existing);
+if (!todayRecorded) { console.error(`NO VERIFIED 浠水45斤 PRICE FOR ${target}. Leave the gap. Do not estimate.`); process.exitCode = 2; }
