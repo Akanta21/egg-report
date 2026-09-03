@@ -38,7 +38,7 @@ Use a test group first.
 - Environment: Custom network access with `www.jbzyw.com`, `gate.whapi.cloud`, `hooks.slack.com`, plus the default package-manager list.
 - API credentials (not env vars): `WHAPI_TOKEN`, `SLACK_WEBHOOK_URL`.
 - Env vars: `EGG_GROUP_ID`, `TZ=Asia/Hong_Kong`.
-- Setup script: `npm ci`
+- Setup script: leave empty. Dependencies install via the SessionStart hook in `.claude/settings.json`, which runs `npm ci` in the repo only when `CLAUDE_CODE_REMOTE=true`.
 - Schedule: daily 11:00 HK.
 - Repo access: the routine commits `data/` and pushes, so it needs write access to this repo.
 - Connectors: none.
