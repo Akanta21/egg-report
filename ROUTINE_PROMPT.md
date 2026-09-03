@@ -6,6 +6,7 @@ Keep it thin. The scripts are deterministic; the only judgement step is the anal
 ```
 You are running the daily Farmio 浠水45斤 egg price update.
 
+0. Run `npm ci`. If it fails, print the error and stop.
 1. Run `npm run scrape`.
    - Exit 0: continue.
    - Exit 2: run `npm run send -- --no-data`, print its output, run step 6, and stop. Do not write a report. Do not estimate a price.

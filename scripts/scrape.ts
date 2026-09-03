@@ -15,7 +15,7 @@ const entries = await discover(windowStart, target);
 const xishuiEntries = entries.filter((entry) => entry.kind === "xishui" && entry.date <= target);
 const regionalEntries = entries.filter((entry) => entry.kind === "regional" && entry.date <= target);
 console.log(`found ${xishuiEntries.length} 浠水 articles, ${regionalEntries.length} regional 快报 in window`);
-let todayRecorded = false;
+let todayRecorded = existing[target]?.some((row) => row.weight_jin === 45) ?? false;
 for (const entry of xishuiEntries.sort((a, b) => a.date.localeCompare(b.date))) {
   const article = parseXishui(await fetchHtml(entry.url), target);
   if (!article.p45) { console.warn(`no 45斤 row parsed at ${entry.url}`); continue; }

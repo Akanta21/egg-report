@@ -19,6 +19,7 @@ npm run save      report -> data/reports/YYYY-MM-DD.md, for tomorrow's diff
 ## Setup
 
 1. `cp .env.example .env`, fill it in, then `npm install`.
+   Nothing loads `.env` automatically; export it in your shell first: `set -a; . ./.env; set +a`.
 2. Load history once and commit it: `npm run backfill -- --from 2026-01-01`
    Roughly 240 days, about 3 minutes with the built-in delay.
    Add `--regional` to also load regional 快报 history (slower, optional).
@@ -38,7 +39,7 @@ Use a test group first.
 - Environment: Custom network access with `www.jbzyw.com`, `gate.whapi.cloud`, `hooks.slack.com`, plus the default package-manager list.
 - API credentials (not env vars): `WHAPI_TOKEN`, `SLACK_WEBHOOK_URL`.
 - Env vars: `EGG_GROUP_ID`, `TZ=Asia/Hong_Kong`.
-- Setup script: leave empty. Dependencies install via the SessionStart hook in `.claude/settings.json`, which runs `npm ci` in the repo only when `CLAUDE_CODE_REMOTE=true`.
+- Setup script: leave empty. The routine prompt runs `npm ci` itself as step 0.
 - Schedule: daily 11:00 HK.
 - Repo access: the routine commits `data/` and pushes, so it needs write access to this repo.
 - Connectors: none.
